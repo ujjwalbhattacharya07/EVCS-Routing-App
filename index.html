@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -52,7 +51,8 @@
       });
 
       directionsService = new google.maps.DirectionsService();
-      directionsRenderer = new google.maps.DirectionsRenderer({ map: map });
+      directionsRenderer = new google.maps.DirectionsRenderer();
+      directionsRenderer.setMap(map);
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition((position) => {
@@ -91,6 +91,9 @@
         return;
       }
 
+      directionsRenderer = new google.maps.DirectionsRenderer();
+      directionsRenderer.setMap(map);
+
       directionsService.route({
         origin: userPos,
         destination: dest,
@@ -102,10 +105,19 @@
       }, (response, status) => {
         if (status === "OK") {
           directionsRenderer.setDirections(response);
+
           const leg = response.routes[0].legs[0];
           const eta = leg.duration.text;
           const arrival = new Date(Date.now() + leg.duration.value * 1000).toLocaleTimeString();
           alert(`✅ ETA: ${eta}\n⏱️ Arrival: ${arrival}`);
+
+          const bounds = new google.maps.LatLngBounds();
+          leg.steps.forEach(step => {
+            bounds.extend(step.start_location);
+            bounds.extend(step.end_location);
+          });
+          map.fitBounds(bounds);
+
         } else {
           alert("Routing failed: " + status);
         }
