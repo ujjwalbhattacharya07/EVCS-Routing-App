@@ -1,32 +1,40 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>EVCS Locator with List</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="initial-scale=1.0, width=device-width">
+  <title>EVCS Locator – Dark Mode + Nav Options</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1.0, width=device-width" />
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; }
+    html, body { margin: 0; padding: 0; height: 100%; font-family: Arial; }
     #map { height: 100%; width: 75%; float: left; }
     #sidebar {
-      height: 100%;
       width: 25%;
+      height: 100%;
       float: right;
+      background: #1e1e1e;
+      color: white;
       overflow-y: auto;
       padding: 10px;
       box-sizing: border-box;
-      background: #f7f7f7;
-      border-left: 1px solid #ccc;
     }
     .charger-item {
-      margin: 10px 0;
-      padding: 8px;
-      border-radius: 4px;
-      background: white;
+      background: #2e2e2e;
+      margin: 8px 0;
+      padding: 10px;
+      border-radius: 6px;
       cursor: pointer;
-      box-shadow: 0 0 4px rgba(0,0,0,0.1);
+      transition: background 0.3s;
     }
     .charger-item:hover {
-      background: #e0f7fa;
+      background: #444;
+    }
+    select, button {
+      width: 100%;
+      margin: 5px 0;
+      padding: 8px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: none;
     }
   </style>
   <script src="charger_data.js"></script>
@@ -34,51 +42,56 @@
 <body>
   <div id="map"></div>
   <div id="sidebar">
-    <h3>Nearby Chargers</h3>
-    <div id="charger-list">Loading...</div>
+    <h2>🔋 EVCS Nearby</h2>
+    <label for="mode">Travel Mode:</label>
+    <select id="mode">
+      <option value="DRIVING">🚗 Driving</option>
+      <option value="WALKING">🚶 Walking</option>
+      <option value="BICYCLING">🚴 Bicycling</option>
+    </select>
+    <div id="charger-list">Loading chargers...</div>
+    <hr style="margin: 15px 0; border-color: #555;">
+    <button onclick="toggleTheme()">🌗 Toggle Light/Dark Mode</button>
   </div>
 
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC6YwoofV6JUhFIkf4KlY32f-MSXeMNM9c&libraries=geometry&callback=initMap" async defer></script>
   <script>
     let map, userMarker, directionsService, directionsRenderer;
     let userPos = null;
+    let darkMode = true;
 
     function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: 12.9716, lng: 77.5946 },
         zoom: 12,
+        styles: darkMode ? darkStyles : [],
         mapTypeId: "roadmap"
       });
 
       directionsService = new google.maps.DirectionsService();
-      directionsRenderer = new google.maps.DirectionsRenderer();
-      directionsRenderer.setMap(map);
+      directionsRenderer = new google.maps.DirectionsRenderer({ map });
 
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((position) => {
+        navigator.geolocation.getCurrentPosition((pos) => {
           userPos = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
           };
-
           userMarker = new google.maps.Marker({
             position: userPos,
-            map: map,
+            map,
             title: "You are here",
             icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
           });
-
           map.setCenter(userPos);
-          renderChargerMarkersAndList();
-        }, () => {
-          alert("Location access denied.");
-        });
+          showChargers();
+        }, () => alert("Geolocation failed"));
       } else {
-        alert("Geolocation is not supported.");
+        alert("Geolocation not supported");
       }
     }
 
-    function getDistanceMeters(p1, p2) {
+    function getDistance(p1, p2) {
       return google.maps.geometry.spherical.computeDistanceBetween(
         new google.maps.LatLng(p1.lat, p1.lng),
         new google.maps.LatLng(p2.lat, p2.lng)
@@ -86,85 +99,81 @@
     }
 
     function routeTo(dest) {
-      if (!userPos) {
-        alert("User location not set.");
-        return;
-      }
+      if (!userPos) return alert("User location unknown");
+      const mode = document.getElementById("mode").value;
 
-      directionsRenderer = new google.maps.DirectionsRenderer();
-      directionsRenderer.setMap(map);
-
+      directionsRenderer = new google.maps.DirectionsRenderer({ map });
       directionsService.route({
         origin: userPos,
         destination: dest,
-        travelMode: google.maps.TravelMode.DRIVING,
+        travelMode: google.maps.TravelMode[mode],
         drivingOptions: {
           departureTime: new Date(),
           trafficModel: "bestguess"
         }
-      }, (response, status) => {
-        if (status === "OK") {
-          directionsRenderer.setDirections(response);
-
-          const leg = response.routes[0].legs[0];
+      }, (res, stat) => {
+        if (stat === "OK") {
+          directionsRenderer.setDirections(res);
+          const leg = res.routes[0].legs[0];
           const eta = leg.duration.text;
-          const arrival = new Date(Date.now() + leg.duration.value * 1000).toLocaleTimeString();
-          alert(`✅ ETA: ${eta}\n⏱️ Arrival: ${arrival}`);
-
-          const bounds = new google.maps.LatLngBounds();
-          leg.steps.forEach(step => {
-            bounds.extend(step.start_location);
-            bounds.extend(step.end_location);
-          });
-          map.fitBounds(bounds);
-
+          const etaTime = new Date(Date.now() + leg.duration.value * 1000).toLocaleTimeString();
+          alert(`ETA: ${eta}\\nArrival: ${etaTime}`);
         } else {
-          alert("Routing failed: " + status);
+          alert("Route error: " + stat);
         }
       });
     }
 
-    function renderChargerMarkersAndList() {
-      const listDiv = document.getElementById("charger-list");
-      listDiv.innerHTML = "";
+    function showChargers() {
+      const list = document.getElementById("charger-list");
+      list.innerHTML = "";
+      const sorted = chargerData.map(c => ({
+        ...c,
+        dist: getDistance(userPos, { lat: c.lat, lng: c.lon })
+      })).sort((a, b) => a.dist - b.dist).slice(0, 10);
 
-      const sortedChargers = chargerData
-        .map((c, i) => ({
-          ...c,
-          dist: getDistanceMeters(userPos, { lat: c.lat, lng: c.lon }),
-          idx: i
-        }))
-        .sort((a, b) => a.dist - b.dist)
-        .slice(0, 10);
-
-      sortedChargers.forEach((c, i) => {
-        const chargerPos = { lat: c.lat, lng: c.lon };
-        const marker = new google.maps.Marker({
-          position: chargerPos,
-          map: map,
-          title: `${c.type} (${c.load} users)`,
-          icon: c.type === "Existing"
-            ? "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
-            : c.type === "GA"
-            ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-            : "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png"
+      sorted.forEach(c => {
+        const chargerLoc = { lat: c.lat, lng: c.lon };
+        new google.maps.Marker({
+          position: chargerLoc,
+          map,
+          title: `${c.type} (${c.load})`,
+          icon: c.type === "GA" ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+              : c.type === "PSO" ? "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png"
+              : "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
         });
 
-        const el = document.createElement("div");
-        el.className = "charger-item";
-        el.innerHTML = `
-          <strong>${c.type} Charger</strong><br>
-          Load: ${c.load} users<br>
-          Distance: ${(c.dist / 1000).toFixed(2)} km
+        const item = document.createElement("div");
+        item.className = "charger-item";
+        item.innerHTML = `
+          <b>${c.type} Charger</b><br>
+          Load: ${c.load}<br>
+          Distance: ${(c.dist/1000).toFixed(2)} km
         `;
-        el.onclick = () => {
-          map.setCenter(chargerPos);
-          map.setZoom(14);
-          routeTo(chargerPos);
-        };
-        listDiv.appendChild(el);
+        item.onclick = () => routeTo(chargerLoc);
+        list.appendChild(item);
       });
     }
+
+    function toggleTheme() {
+      darkMode = !darkMode;
+      map.setOptions({ styles: darkMode ? darkStyles : [] });
+      document.body.style.background = darkMode ? "#1e1e1e" : "white";
+      document.getElementById("sidebar").style.background = darkMode ? "#1e1e1e" : "white";
+      document.getElementById("sidebar").style.color = darkMode ? "white" : "black";
+    }
+
+    const darkStyles = [
+      { "elementType": "geometry", "stylers": [{ "color": "#1d2c4d" }] },
+      { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
+      { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1a3646" }] },
+      { "featureType": "administrative.country", "elementType": "geometry.stroke", "stylers": [{ "color": "#4b6878" }] },
+      { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#023e58" }] },
+      { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#283d6a" }] },
+      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#304a7d" }] },
+      { "featureType": "transit", "elementType": "geometry", "stylers": [{ "color": "#2f3948" }] },
+      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0e1626" }] }
+    ];
   </script>
 </body>
 </html>
