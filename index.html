@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>EVCS Locator – Dark Mode + Nav Options</title>
+  <title>EVCS Locator – Dark Mode + Navigation</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="initial-scale=1.0, width=device-width" />
   <style>
@@ -102,7 +102,13 @@
       if (!userPos) return alert("User location unknown");
       const mode = document.getElementById("mode").value;
 
-      directionsRenderer = new google.maps.DirectionsRenderer({ map });
+      // Fully recreate and bind a new DirectionsRenderer
+      if (directionsRenderer) {
+        directionsRenderer.setMap(null);
+      }
+      directionsRenderer = new google.maps.DirectionsRenderer();
+      directionsRenderer.setMap(map);
+
       directionsService.route({
         origin: userPos,
         destination: dest,
@@ -117,7 +123,14 @@
           const leg = res.routes[0].legs[0];
           const eta = leg.duration.text;
           const etaTime = new Date(Date.now() + leg.duration.value * 1000).toLocaleTimeString();
-          alert(`ETA: ${eta}\\nArrival: ${etaTime}`);
+          alert(`✅ ETA: ${eta}\\n⏱️ Arrival: ${etaTime}`);
+
+          const bounds = new google.maps.LatLngBounds();
+          leg.steps.forEach(step => {
+            bounds.extend(step.start_location);
+            bounds.extend(step.end_location);
+          });
+          map.fitBounds(bounds);
         } else {
           alert("Route error: " + stat);
         }
