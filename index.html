@@ -6,9 +6,9 @@
   <meta name="viewport" content="initial-scale=1.0, width=device-width" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; font-family: Arial; }
-    #map { height: 100%; width: 75%; float: left; }
+    #map { height: 100%; width: 70%; float: left; }
     #sidebar {
-      width: 25%;
+      width: 30%;
       height: 100%;
       float: right;
       background: #1e1e1e;
@@ -22,7 +22,6 @@
       margin: 8px 0;
       padding: 10px;
       border-radius: 6px;
-      cursor: pointer;
       transition: background 0.3s;
     }
     .charger-item:hover {
@@ -30,11 +29,20 @@
     }
     select, button {
       width: 100%;
-      margin: 5px 0;
+      margin: 6px 0;
       padding: 8px;
       font-size: 14px;
       border-radius: 4px;
       border: none;
+    }
+    #directions-panel {
+      background: #111;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 13px;
+      max-height: 250px;
+      overflow-y: auto;
+      border-radius: 5px;
     }
     a {
       color: #1e90ff;
@@ -55,16 +63,18 @@
       <option value="WALKING">🚶 Walking</option>
       <option value="BICYCLING">🚴 Bicycling</option>
     </select>
-    <div id="charger-list">Loading chargers...</div>
-    <hr style="margin: 15px 0; border-color: #555;">
     <button onclick="toggleTheme()">🌗 Toggle Light/Dark Mode</button>
+    <button onclick="toggleTraffic()">🚦 Toggle Traffic Overlay</button>
+    <div id="charger-list">Loading chargers...</div>
+    <div id="directions-panel"></div>
   </div>
 
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC6YwoofV6JUhFIkf4KlY32f-MSXeMNM9c&libraries=geometry&callback=initMap" async defer></script>
   <script>
-    let map, userMarker, directionsService, directionsRenderer;
+    let map, userMarker, directionsService, directionsRenderer, trafficLayer;
     let userPos = null;
     let darkMode = true;
+    let coverageCircles = [];
 
     function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
@@ -74,8 +84,10 @@
         mapTypeId: "roadmap"
       });
 
+      trafficLayer = new google.maps.TrafficLayer();
+
       directionsService = new google.maps.DirectionsService();
-      directionsRenderer = new google.maps.DirectionsRenderer({ map });
+      directionsRenderer = new google.maps.DirectionsRenderer({ map, panel: document.getElementById("directions-panel") });
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition((pos) => {
@@ -108,10 +120,8 @@
       if (!userPos) return alert("User location unknown");
       const mode = document.getElementById("mode").value;
 
-      if (directionsRenderer) {
-        directionsRenderer.setMap(null);
-      }
-      directionsRenderer = new google.maps.DirectionsRenderer();
+      directionsRenderer.setMap(null);
+      directionsRenderer = new google.maps.DirectionsRenderer({ map, panel: document.getElementById("directions-panel") });
       directionsRenderer.setMap(map);
 
       directionsService.route({
@@ -129,13 +139,6 @@
           const eta = leg.duration.text;
           const etaTime = new Date(Date.now() + leg.duration.value * 1000).toLocaleTimeString();
           alert(`✅ ETA: ${eta}\\n⏱️ Arrival: ${etaTime}`);
-
-          const bounds = new google.maps.LatLngBounds();
-          leg.steps.forEach(step => {
-            bounds.extend(step.start_location);
-            bounds.extend(step.end_location);
-          });
-          map.fitBounds(bounds);
         } else {
           alert("Route error: " + stat);
         }
@@ -154,12 +157,10 @@
     function showChargers() {
       const list = document.getElementById("charger-list");
       list.innerHTML = "";
-      const sorted = chargerData.map(c => ({
+      chargerData.map(c => ({
         ...c,
         dist: getDistance(userPos, { lat: c.lat, lng: c.lon })
-      })).sort((a, b) => a.dist - b.dist).slice(0, 10);
-
-      sorted.forEach(c => {
+      })).sort((a, b) => a.dist - b.dist).slice(0, 10).forEach(c => {
         const chargerLoc = { lat: c.lat, lng: c.lon };
         new google.maps.Marker({
           position: chargerLoc,
@@ -170,12 +171,24 @@
               : "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
         });
 
+        const circle = new google.maps.Circle({
+          strokeColor: "#00ffff",
+          strokeOpacity: 0.6,
+          strokeWeight: 1,
+          fillColor: "#00ffff",
+          fillOpacity: 0.08,
+          map,
+          center: chargerLoc,
+          radius: 2000
+        });
+        coverageCircles.push(circle);
+
         const item = document.createElement("div");
         item.className = "charger-item";
         item.innerHTML = `
           <b>${c.type} Charger</b><br>
           Load: ${c.load}<br>
-          Distance: ${(c.dist/1000).toFixed(2)} km<br>
+          Distance: ${(c.dist / 1000).toFixed(2)} km<br>
           <button onclick="routeTo({ lat: ${c.lat}, lng: ${c.lon} })">Route Here</button>
           <button onclick="startExternalNavigation(${c.lat}, ${c.lon})">Start Navigation</button>
         `;
@@ -191,16 +204,23 @@
       document.getElementById("sidebar").style.color = darkMode ? "white" : "black";
     }
 
-    const darkStyles = [
-      { "elementType": "geometry", "stylers": [{ "color": "#1d2c4d" }] },
-      { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
-      { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1a3646" }] },
-      { "featureType": "administrative.country", "elementType": "geometry.stroke", "stylers": [{ "color": "#4b6878" }] },
-      { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#023e58" }] },
-      { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#283d6a" }] },
-      { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#304a7d" }] },
-      { "featureType": "transit", "elementType": "geometry", "stylers": [{ "color": "#2f3948" }] },
-      { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0e1626" }] }
+    function toggleTraffic() {
+      if (trafficLayer.getMap()) {
+        trafficLayer.setMap(null);
+      } else {
+        trafficLayer.setMap(map);
+      }
+    }
+
+    const darkStyles = [ { elementType: "geometry", stylers: [ { color: "#1d2c4d" } ] },
+      { elementType: "labels.text.fill", stylers: [ { color: "#8ec3b9" } ] },
+      { elementType: "labels.text.stroke", stylers: [ { color: "#1a3646" } ] },
+      { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [ { color: "#4b6878" } ] },
+      { featureType: "landscape.natural", elementType: "geometry", stylers: [ { color: "#023e58" } ] },
+      { featureType: "poi", elementType: "geometry", stylers: [ { color: "#283d6a" } ] },
+      { featureType: "road", elementType: "geometry", stylers: [ { color: "#304a7d" } ] },
+      { featureType: "transit", elementType: "geometry", stylers: [ { color: "#2f3948" } ] },
+      { featureType: "water", elementType: "geometry", stylers: [ { color: "#0e1626" } ] }
     ];
   </script>
 </body>
