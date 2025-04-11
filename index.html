@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>EVCS Locator – Dark Mode + Navigation</title>
+  <title>EVCS Locator – Navigation Ready</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="initial-scale=1.0, width=device-width" />
   <style>
@@ -35,6 +35,12 @@
       font-size: 14px;
       border-radius: 4px;
       border: none;
+    }
+    a {
+      color: #1e90ff;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 5px;
     }
   </style>
   <script src="charger_data.js"></script>
@@ -102,7 +108,6 @@
       if (!userPos) return alert("User location unknown");
       const mode = document.getElementById("mode").value;
 
-      // Fully recreate and bind a new DirectionsRenderer
       if (directionsRenderer) {
         directionsRenderer.setMap(null);
       }
@@ -137,6 +142,15 @@
       });
     }
 
+    function startExternalNavigation(destLat, destLng) {
+      if (!userPos) {
+        alert("User location not set.");
+        return;
+      }
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${userPos.lat},${userPos.lng}&destination=${destLat},${destLng}&travelmode=driving`;
+      window.open(url, '_blank');
+    }
+
     function showChargers() {
       const list = document.getElementById("charger-list");
       list.innerHTML = "";
@@ -161,9 +175,10 @@
         item.innerHTML = `
           <b>${c.type} Charger</b><br>
           Load: ${c.load}<br>
-          Distance: ${(c.dist/1000).toFixed(2)} km
+          Distance: ${(c.dist/1000).toFixed(2)} km<br>
+          <button onclick="routeTo({ lat: ${c.lat}, lng: ${c.lon} })">Route Here</button>
+          <button onclick="startExternalNavigation(${c.lat}, ${c.lon})">Start Navigation</button>
         `;
-        item.onclick = () => routeTo(chargerLoc);
         list.appendChild(item);
       });
     }
