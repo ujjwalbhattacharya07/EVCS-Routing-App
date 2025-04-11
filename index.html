@@ -44,12 +44,6 @@
       overflow-y: auto;
       border-radius: 5px;
     }
-    a {
-      color: #1e90ff;
-      text-decoration: none;
-      display: inline-block;
-      margin-top: 5px;
-    }
   </style>
   <script src="charger_data.js"></script>
 </head>
@@ -63,31 +57,31 @@
       <option value="WALKING">🚶 Walking</option>
       <option value="BICYCLING">🚴 Bicycling</option>
     </select>
-    <button onclick="toggleTheme()">🌗 Toggle Light/Dark Mode</button>
-    <button onclick="toggleTraffic()">🚦 Toggle Traffic Overlay</button>
+    <button onclick="toggleTheme()">🌗 Toggle Dark Mode</button>
+    <button onclick="toggleTraffic()">🚦 Toggle Traffic</button>
     <div id="charger-list">Loading chargers...</div>
     <div id="directions-panel"></div>
   </div>
 
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC6YwoofV6JUhFIkf4KlY32f-MSXeMNM9c&libraries=geometry&callback=initMap" async defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry&callback=initMap" async defer></script>
   <script>
     let map, userMarker, directionsService, directionsRenderer, trafficLayer;
     let userPos = null;
     let darkMode = true;
-    let coverageCircles = [];
 
     function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: 12.9716, lng: 77.5946 },
         zoom: 12,
-        styles: darkMode ? darkStyles : [],
-        mapTypeId: "roadmap"
+        styles: darkMode ? darkStyles : []
       });
 
       trafficLayer = new google.maps.TrafficLayer();
-
       directionsService = new google.maps.DirectionsService();
-      directionsRenderer = new google.maps.DirectionsRenderer({ map, panel: document.getElementById("directions-panel") });
+      directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        panel: document.getElementById("directions-panel")
+      });
 
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition((pos) => {
@@ -109,20 +103,18 @@
       }
     }
 
-    function getDistance(p1, p2) {
-      return google.maps.geometry.spherical.computeDistanceBetween(
-        new google.maps.LatLng(p1.lat, p1.lng),
-        new google.maps.LatLng(p2.lat, p2.lng)
-      );
-    }
-
     function routeTo(dest) {
-      if (!userPos) return alert("User location unknown");
-      const mode = document.getElementById("mode").value;
+      if (!userPos || !userPos.lat || !userPos.lng) {
+        alert("User location not ready. Please allow location access and try again.");
+        return;
+      }
 
+      const mode = document.getElementById("mode").value;
       directionsRenderer.setMap(null);
-      directionsRenderer = new google.maps.DirectionsRenderer({ map, panel: document.getElementById("directions-panel") });
-      directionsRenderer.setMap(map);
+      directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        panel: document.getElementById("directions-panel")
+      });
 
       directionsService.route({
         origin: userPos,
@@ -136,20 +128,15 @@
         if (stat === "OK") {
           directionsRenderer.setDirections(res);
           const leg = res.routes[0].legs[0];
-          const eta = leg.duration.text;
-          const etaTime = new Date(Date.now() + leg.duration.value * 1000).toLocaleTimeString();
-          alert(`✅ ETA: ${eta}\\n⏱️ Arrival: ${etaTime}`);
+          alert(`✅ ETA: ${leg.duration.text}\n⏱️ Arrival: ${new Date(Date.now() + leg.duration.value * 1000).toLocaleTimeString()}`);
         } else {
-          alert("Route error: " + stat);
+          alert("Routing failed: " + stat);
         }
       });
     }
 
     function startExternalNavigation(destLat, destLng) {
-      if (!userPos) {
-        alert("User location not set.");
-        return;
-      }
+      if (!userPos) return alert("User location not set.");
       const url = `https://www.google.com/maps/dir/?api=1&origin=${userPos.lat},${userPos.lng}&destination=${destLat},${destLng}&travelmode=driving`;
       window.open(url, '_blank');
     }
@@ -157,43 +144,32 @@
     function showChargers() {
       const list = document.getElementById("charger-list");
       list.innerHTML = "";
-      chargerData.map(c => ({
-        ...c,
-        dist: getDistance(userPos, { lat: c.lat, lng: c.lon })
-      })).sort((a, b) => a.dist - b.dist).slice(0, 10).forEach(c => {
-        const chargerLoc = { lat: c.lat, lng: c.lon };
-        new google.maps.Marker({
-          position: chargerLoc,
-          map,
-          title: `${c.type} (${c.load})`,
-          icon: c.type === "GA" ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-              : c.type === "PSO" ? "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png"
-              : "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
-        });
+      chargerData
+        .map(c => ({ ...c, dist: getDistance(userPos, { lat: c.lat, lng: c.lon }) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 10)
+        .forEach(c => {
+          const chargerLoc = { lat: c.lat, lng: c.lon };
+          new google.maps.Marker({
+            position: chargerLoc,
+            map,
+            title: `${c.type} (${c.load})`,
+            icon: c.type === "GA" ? "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+                 : c.type === "PSO" ? "http://maps.google.com/mapfiles/ms/icons/yellow-dot.png"
+                 : "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+          });
 
-        const circle = new google.maps.Circle({
-          strokeColor: "#00ffff",
-          strokeOpacity: 0.6,
-          strokeWeight: 1,
-          fillColor: "#00ffff",
-          fillOpacity: 0.08,
-          map,
-          center: chargerLoc,
-          radius: 2000
+          const item = document.createElement("div");
+          item.className = "charger-item";
+          item.innerHTML = `
+            <b>${c.type} Charger</b><br>
+            Load: ${c.load}<br>
+            Distance: ${(c.dist / 1000).toFixed(2)} km<br>
+            <button onclick="routeTo({ lat: ${c.lat}, lng: ${c.lon} })">Route Here</button>
+            <button onclick="startExternalNavigation(${c.lat}, ${c.lon})">Start Navigation</button>
+          `;
+          list.appendChild(item);
         });
-        coverageCircles.push(circle);
-
-        const item = document.createElement("div");
-        item.className = "charger-item";
-        item.innerHTML = `
-          <b>${c.type} Charger</b><br>
-          Load: ${c.load}<br>
-          Distance: ${(c.dist / 1000).toFixed(2)} km<br>
-          <button onclick="routeTo({ lat: ${c.lat}, lng: ${c.lon} })">Route Here</button>
-          <button onclick="startExternalNavigation(${c.lat}, ${c.lon})">Start Navigation</button>
-        `;
-        list.appendChild(item);
-      });
     }
 
     function toggleTheme() {
@@ -205,22 +181,26 @@
     }
 
     function toggleTraffic() {
-      if (trafficLayer.getMap()) {
-        trafficLayer.setMap(null);
-      } else {
-        trafficLayer.setMap(map);
-      }
+      trafficLayer.setMap(trafficLayer.getMap() ? null : map);
     }
 
-    const darkStyles = [ { elementType: "geometry", stylers: [ { color: "#1d2c4d" } ] },
-      { elementType: "labels.text.fill", stylers: [ { color: "#8ec3b9" } ] },
-      { elementType: "labels.text.stroke", stylers: [ { color: "#1a3646" } ] },
-      { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [ { color: "#4b6878" } ] },
-      { featureType: "landscape.natural", elementType: "geometry", stylers: [ { color: "#023e58" } ] },
-      { featureType: "poi", elementType: "geometry", stylers: [ { color: "#283d6a" } ] },
-      { featureType: "road", elementType: "geometry", stylers: [ { color: "#304a7d" } ] },
-      { featureType: "transit", elementType: "geometry", stylers: [ { color: "#2f3948" } ] },
-      { featureType: "water", elementType: "geometry", stylers: [ { color: "#0e1626" } ] }
+    function getDistance(p1, p2) {
+      return google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(p1.lat, p1.lng),
+        new google.maps.LatLng(p2.lat, p2.lng)
+      );
+    }
+
+    const darkStyles = [
+      { elementType: "geometry", stylers: [{ color: "#1d2c4d" }] },
+      { elementType: "labels.text.fill", stylers: [{ color: "#8ec3b9" }] },
+      { elementType: "labels.text.stroke", stylers: [{ color: "#1a3646" }] },
+      { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [{ color: "#4b6878" }] },
+      { featureType: "landscape.natural", elementType: "geometry", stylers: [{ color: "#023e58" }] },
+      { featureType: "poi", elementType: "geometry", stylers: [{ color: "#283d6a" }] },
+      { featureType: "road", elementType: "geometry", stylers: [{ color: "#304a7d" }] },
+      { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2f3948" }] },
+      { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e1626" }] }
     ];
   </script>
 </body>
