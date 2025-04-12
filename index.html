@@ -1,9 +1,7 @@
-# Recreate fixed HTML after kernel reset
-fixed_html = """
 <!DOCTYPE html>
 <html>
 <head>
-  <title>EVCS Locator – Route Button Fix</title>
+  <title>EVCS Locator</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="initial-scale=1.0, width=device-width" />
   <style>
@@ -230,11 +228,3 @@ fixed_html = """
   </script>
 </body>
 </html>
-"""
-
-# Save final version
-final_fixed_path = "/mnt/data/index_fixed_route_button.html"
-with open(final_fixed_path, "w") as f:
-    f.write(fixed_html)
-
-final_fixed_path
